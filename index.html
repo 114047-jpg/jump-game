@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <title>Untitled</title>
+    
+
+  </head>
+    
+  <body>
+  <!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>早春行旅：瑪利歐山水篇</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: "Microsoft JhengHei", serif;
+        }
+        canvas {
+            background-color: #e6dcc3; /* 仿古絹本色 */
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            border: 8px solid #5d4037;
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            color: #3e2723;
+            text-align: center;
+            pointer-events: none;
+        }
+        h1 { margin: 0; font-size: 24px; letter-spacing: 2px; }
+        p { margin: 5px 0; font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <h1>早春行旅圖 (1072)</h1>
+        <p>玩法：左右鍵移動，空白鍵跳躍 | 目標：登上山頂樓閣</p>
+        <p>小心「蟹爪枝」(尖刺) 與 深淵</p>
+    </div>
+    <canvas id="gameCanvas" width="600" height="800"></canvas>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 遊戲狀態
+    let gameState = 'START'; // START, PLAYING, GAMEOVER, WIN
+    let frameCount = 0;
+
+    // 物理參數
+    const GRAVITY = 0.6;
+    const FRICTION = 0.8;
+    const JUMP_FORCE = -12;
+    const SPEED = 5;
+
+    // 瑪利歐 (紅色方塊代表，致敬印章「郭熙筆」的紅色)
+    const player = {
+        x: 280,
+        y: 700,
+        width: 30,
+        height: 30,
+        dx: 0,
+        dy: 0,
+        grounded: false,
+        color: '#b71c1c' // 朱砂紅
+    };
+
+    // 視角偏移 (垂直捲軸)
+    let cameraY = 0;
+
+    // 關卡物件
+    const platforms = [];
+    const hazards = []; // 蟹爪枝
+    const clouds = [];  // 煙雲
+
+    // 初始化關卡：根據「早春圖」結構生成
+    function initLevel() {
+        platforms.length = 0;
+        hazards.length = 0;
+        
+        // 1. 底部河谷 (基座)
+        platforms.push({x: 0, y: 750, w: 600, h: 50, type: 'ground'});
+
+        // 2. 構建「S」形山勢與「捲雲皴」平台
+        // 參數: x, y, width
+        createCloudPlatform(200, 650, 200);
+        createCloudPlatform(50, 550, 150); // 左側平坡委迤
+        createCloudPlatform(400, 500, 150);
+        createCloudPlatform(250, 400, 120); // 中軸線
+        createCloudPlatform(100, 300, 100);
+        createCloudPlatform(450, 250, 100);
+        createCloudPlatform(250, 150, 150); // 主山
+        
+        // 終點樓閣平台
+        platforms.push({x: 250, y: 50, w: 100, h: 20, type: 'goal'});
+
+        // 3. 添加「蟹爪枝」(障礙物)
+        // 生長在岩石邊緣
+        hazards.push({x: 180, y: 650});
+        hazards.push({x: 420, y: 650});
+        hazards.push({x: 100, y: 550});
+        hazards.push({x: 380, y: 500});
+        hazards.push({x: 230, y: 400});
+        hazards.push({x: 300, y: 250});
+        hazards.push({x: 350, y: 150});
+    }
+
+    function createCloudPlatform(x, y, w) {
+        platforms.push({x: x, y: y, w: w, h: 20, type: 'rock'});
+    }
+
+    // 輸入控制
+    const keys = { right: false, left: false, up: false };
+    document.addEventListener('keydown', (e) => {
+        if (e.code === 'ArrowRight') keys.right = true;
+        if (e.code === 'ArrowLeft') keys.left = true;
+        if (e.code === 'Space' || e.code === 'ArrowUp') {
+            if (player.grounded) {
+                player.dy = JUMP_FORCE;
+                player.grounded = false;
+            }
+            if (gameState !== 'PLAYING') resetGame();
+        }
+    });
+    document.addEventListener('keyup', (e) => {
+        if (e.code === 'ArrowRight') keys.right = false;
+        if (e.code === 'ArrowLeft') keys.left = false;
+    });
+
+    function resetGame() {
+        player.x = 280;
+        player.y = 700;
+        player.dx = 0;
+        player.dy = 0;
+        cameraY = 0;
+        gameState = 'PLAYING';
+        initLevel();
+    }
+
+    function update() {
+        if (gameState !== 'PLAYING') return;
+
+        // 移動邏輯
+        if (keys.right) player.dx = SPEED;
+        else if (keys.left) player.dx = -SPEED;
+        else player.dx *= FRICTION;
+
+        player.dy += GRAVITY;
+        player.x += player.dx;
+        player.y += player.dy;
+
+        // 邊界檢查 (左右)
+        if (player.x < 0) player.x = 0;
+        if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+
+        // 掉落深淵
+        if (player.y > 800 + cameraY) {
+            gameState = 'GAMEOVER';
+        }
+
+        // 碰撞檢測
+        player.grounded = false;
+        for (let p of platforms) {
+            // 簡單的AABB碰撞 (只檢測從上方落下)
+            if (player.x < p.x + p.w &&
+                player.x + player.width > p.x &&
+                player.y + player.height > p.y &&
+                player.y + player.height < p.y + p.h + 20 && // 容錯
+                player.dy > 0) {
+                
+                player.grounded = true;
+                player.dy = 0;
+                player.y = p.y - player.height;
+
+                // 勝利條件
+                if (p.type === 'goal') {
+                    gameState = 'WIN';
+                }
+            }
+        }
+
+        // 蟹爪枝碰撞 (判定點較小，位於樹枝中心)
+        for (let h of hazards) {
+            let hx = h.x;
+            let hy = h.y - 30; // 樹高
+            if (player.x < hx + 10 &&
+                player.x + player.width > hx - 10 &&
+                player.y < h.y &&
+                player.y + player.height > hy) {
+                gameState = 'GAMEOVER';
+            }
+        }
+
+        // 攝影機跟隨 (向上捲動)
+        const targetCamY = player.y - 600;
+        if (targetCamY < cameraY) {
+            cameraY = targetCamY; // 只能往上捲
+        }
+        
+        // 煙雲效果更新
+        frameCount++;
+    }
+
+    function draw() {
+        // 清空畫面
+        ctx.fillStyle = '#e6dcc3';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        // 應用攝影機位移
+        ctx.translate(0, -cameraY);
+
+        // 1. 繪製背景山巒 (淡墨)
+        ctx.fillStyle = 'rgba(100, 100, 100, 0.1)';
+        ctx.beginPath();
+        ctx.moveTo(0, 800);
+        ctx.lineTo(100, 400);
+        ctx.lineTo(300, 200); // 遠峰
+        ctx.lineTo(500, 500);
+        ctx.lineTo(600, 800);
+        ctx.fill();
+
+        // 2. 繪製平台 (捲雲皴效果)
+        ctx.fillStyle = '#2c2c2c'; // 濃墨
+        for (let p of platforms) {
+            if (p.type === 'goal') {
+                // 樓閣
+                ctx.fillStyle = '#5d4037';
+                ctx.fillRect(p.x + 20, p.y - 40, 60, 40); // 屋身
+                ctx.beginPath(); // 屋頂
+                ctx.moveTo(p.x, p.y - 40);
+                ctx.lineTo(p.x + 50, p.y - 70);
+                ctx.lineTo(p.x + 100, p.y - 40);
+                ctx.fill();
+                ctx.fillStyle = '#2c2c2c'; // 回復墨色
+            } else {
+                // 繪製類似石頭的圓潤矩形
+                ctx.beginPath();
+                ctx.roundRect(p.x, p.y, p.w, p.h, 15);
+                ctx.fill();
+                
+                // 加一點皴法紋理
+                ctx.strokeStyle = '#555';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(p.x + p.w/2, p.y + 10, 10, 0, Math.PI, true);
+                ctx.stroke();
+            }
+        }
+
+        // 3. 繪製蟹爪枝 (枯樹障礙)
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        for (let h of hazards) {
+            ctx.beginPath();
+            ctx.moveTo(h.x, h.y);
+            ctx.lineTo(h.x, h.y - 30); // 主幹
+            ctx.lineTo(h.x - 10, h.y - 40); // 左爪
+            ctx.moveTo(h.x, h.y - 30);
+            ctx.lineTo(h.x + 10, h.y - 35); // 右爪
+            ctx.moveTo(h.x, h.y - 20);
+            ctx.lineTo(h.x - 8, h.y - 25);
+            ctx.stroke();
+        }
+
+        // 4. 繪製玩家 (印章風格)
+        ctx.fillStyle = player.color;
+        ctx.fillRect(player.x, player.y, player.width, player.height);
+        // 印章文字模擬
+        ctx.fillStyle = 'white';
+        ctx.font = '10px Arial';
+        ctx.fillText('郭', player.x + 8, player.y + 18);
+
+        // 5. 繪製煙雲 (前景遮擋)
+        // 根據文件：「煙雲變幻」、「層層皴擦」
+        ctx.fillStyle = `rgba(255, 255, 255, ${0.3 + Math.sin(frameCount * 0.02) * 0.1})`;
+        ctx.beginPath();
+        ctx.arc(100 + Math.sin(frameCount * 0.01) * 50, 400, 80, 0, Math.PI * 2);
+        ctx.arc(500 - Math.sin(frameCount * 0.01) * 50, 200, 100, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+
+        // 6. UI 顯示
+        if (gameState === 'START') {
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = 'white';
+            ctx.font = '30px "Microsoft JhengHei"';
+            ctx.fillText('按 空白鍵 開始行旅', 180, 400);
+            ctx.font = '20px "Microsoft JhengHei"';
+            ctx.fillText('壬子年 (1072) 郭熙畫', 210, 450);
+        } else if (gameState === 'GAMEOVER') {
+            ctx.fillStyle = 'rgba(0,0,0,0.7)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#ff5252';
+            ctx.font = '40px "Microsoft JhengHei"';
+            ctx.fillText('失足深淵 / 觸碰枯枝', 130, 380);
+            ctx.fillStyle = 'white';
+            ctx.font = '24px "Microsoft JhengHei"';
+            ctx.fillText('按 空白鍵 重新來過', 200, 430);
+        } else if (gameState === 'WIN') {
+            ctx.fillStyle = 'rgba(255,255,255,0.8)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#333';
+            ctx.font = '40px "Microsoft JhengHei"';
+            ctx.fillText('登頂樓閣', 220, 350);
+            ctx.font = '24px "Microsoft JhengHei"';
+            ctx.fillText('可遊，可居，心曠神怡', 180, 400);
+        }
+        
+        requestAnimationFrame(update);
+        requestAnimationFrame(draw);
+    }
+
+    initLevel();
+    update();
+    draw();
+
+</script>
+</body>
+</html>
+    
+  </body>
+  
+</html>
