@@ -5,7 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta charset="UTF-8">
     <title>Untitled</title>
-    
+    <script>
+  window.addEventListener("keydown", function (e) {
+    const blockKeys = [
+      "ArrowUp",
+      "ArrowDown",
+      "ArrowLeft",
+      "ArrowRight",
+      " "
+    ];
+
+    if (blockKeys.includes(e.key)) {
+      e.preventDefault();
+    }
+  });
+</script>
+
 
   </head>
     
